@@ -6,10 +6,12 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from src.router.strategies.round_robin import RoundRobinStrategy
 from src.backend.vllm_client import VLLMClient
+from src.utils.logger import setup_logger
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Router")
+# TODO: Get experiment ID from env var or config
+EXPERIMENT_ID = "default_experiment" 
+logger, _ = setup_logger("Router", experiment_id=EXPERIMENT_ID)
 
 app = FastAPI(title="vLLM Router")
 
@@ -111,8 +113,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="0.0.0.0")
     parser.add_argument("--port", type=int, default=6006)
+    parser.add_argument("--exp_id", type=str, default="default_experiment")
     args = parser.parse_args()
     
+    # Re-setup logger with args if needed, or set global var (simplification for now)
+    # Ideally, app creation would be in a factory, but we'll stick to this for simplicity
+    if args.exp_id != "default_experiment":
+        logger, _ = setup_logger("Router", experiment_id=args.exp_id)
+
     logger.info(f"Starting Router on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
 

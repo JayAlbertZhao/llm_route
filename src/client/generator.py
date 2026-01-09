@@ -9,9 +9,10 @@ import numpy as np
 import ssl
 from typing import Literal
 from src.client.workload import WorkloadLoader
+from src.utils.logger import setup_logger
 
-logger = logging.getLogger("TrafficGen")
-logging.basicConfig(level=logging.INFO)
+# Will be initialized in __main__ or run
+logger = None 
 
 class TrafficGenerator:
     def __init__(self, 
@@ -168,7 +169,12 @@ if __name__ == "__main__":
     parser.add_argument("--rps", type=float, default=2.0)
     parser.add_argument("--duration", type=int, default=10)
     parser.add_argument("--dist", type=str, default="poisson")
+    parser.add_argument("--exp_id", type=str, default=None)
     args = parser.parse_args()
+
+    # Setup Logger
+    logger, exp_id = setup_logger("TrafficGen", experiment_id=args.exp_id)
+    logger.info(f"Experiment ID: {exp_id}")
 
     gen = TrafficGenerator(args.url, "data/processed_workload.jsonl", rps=args.rps, duration=args.duration, distribution=args.dist)
     asyncio.run(gen.run())
