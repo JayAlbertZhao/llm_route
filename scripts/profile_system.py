@@ -24,12 +24,22 @@ class Profiler:
         self.target_url = target_url
         
     async def send_request(self, session, prompt, current_rps, active_reqs):
-        # ... (same as before)
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 128, 
+            "stream": True
+        }
+        
+        start_time = time.time()
+        ttft = None
+        token_count = 0
         
         try:
             # Use self.target_url instead of global constant
             async with session.post(self.target_url, json=payload) as response:
                 if response.status != 200:
+                    print(f"Request failed: HTTP {response.status}")
                     return None
                 
                 async for line in response.content:
@@ -67,7 +77,9 @@ class Profiler:
         tasks = []
         active_reqs = 0
         
-        async with aiohttp.ClientSession() as session:
+        # Disable SSL verification for testing
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector) as session:
             while time.time() - start_time < duration_sec:
                 # Poisson arrival
                 wait_time = np.random.exponential(1.0 / rps)
