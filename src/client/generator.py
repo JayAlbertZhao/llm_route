@@ -104,6 +104,19 @@ class TrafficGenerator:
                 self.stats["errors"] += 1
 
     async def run(self):
+        # Suppress annoying SSL errors in asyncio loop
+        def handle_exception(loop, context):
+            msg = context.get("exception", context.get("message"))
+            if "SSL" in str(msg) or "ClientConnectionError" in str(msg):
+                return # Ignore
+            if "application data after close notify" in str(msg):
+                return
+            # Default behavior
+            loop.default_exception_handler(context)
+
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(handle_exception)
+
         logger.info(f"Starting traffic generation: {self.distribution} @ {self.rps} RPS for {self.duration}s")
         start_time = time.time()
         
