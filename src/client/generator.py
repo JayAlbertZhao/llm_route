@@ -127,9 +127,15 @@ class TrafficGenerator:
             logger.info(f"Mean TTFT: {np.mean(self.stats['ttft']):.4f}s")
 
 if __name__ == "__main__":
-    # Example usage
-    gen = TrafficGenerator("http://localhost:8000", "data/processed_workload.jsonl", rps=2.0, duration=10)
-    # Ensure data exists or mock it
-    # asyncio.run(gen.run())
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", type=str, default="http://localhost:6006")
+    parser.add_argument("--rps", type=float, default=2.0)
+    parser.add_argument("--duration", type=int, default=10)
+    parser.add_argument("--dist", type=str, default="poisson")
+    args = parser.parse_args()
+
+    gen = TrafficGenerator(args.url, "data/processed_workload.jsonl", rps=args.rps, duration=args.duration, distribution=args.dist)
+    asyncio.run(gen.run())
 
 

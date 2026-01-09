@@ -14,7 +14,15 @@ logger = logging.getLogger("Router")
 app = FastAPI(title="vLLM Router")
 
 # Global Configuration (TODO: Move to config file)
-BACKENDS = ["http://localhost:8000"] 
+# AutoDL/SeetaCloud Deployment:
+# Router listens on 6006 (mapped to public 8443)
+# vLLM instances on 8081-8084
+BACKENDS = [
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084"
+]
 STRATEGY = RoundRobinStrategy()
 CLIENT = VLLMClient()
 
@@ -89,5 +97,17 @@ async def chat_completions(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok", "backends": len(BACKENDS)}
+
+if __name__ == "__main__":
+    import uvicorn
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", type=str, default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=6006)
+    args = parser.parse_args()
+    
+    logger.info(f"Starting Router on {args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port)
 
 
