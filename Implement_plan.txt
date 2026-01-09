@@ -1,0 +1,40 @@
+1. 实验架构 (System Architecture)
+流量端 (Client)：本地机器，负责从预先分层的请求池中，按照设定的分布（泊松、突发等）采样并发送请求。
+路由层 (Router/Gateway)：部署在 AutoDL 的 CPU 上。根据设定的QoS指标使用指定的模型对请求的特定特征进行预测，并进而做路由决策。
+功能：流量预测（Prediction）+ 路径选择（Routing）。
+模型库：线性、决策树、MLP、全局动态线性。
+执行层 (Backend)：AutoDL 上的多张 GPU，每张卡运行一个独立的 vLLM 实例（同构配置，简化变量）。
+2. 预实验与数据准备 (Profiling & Pre-processing)
+分层请求池 (Bucketing)：
+从 allenai/WildChat-1M 提取数据。
+按 Token 长度分为若干个桶，确保每个桶内有足够样本。桶用于模拟请求长度分布。
+画像采集 (Profiling)：
+固定单个 vLLM 实例，改变“请求强度（Request Intensity）”和请求分布和长度分布，记录尽可能所有数据，实时写入保存。
+这些数据用于训练那四个路由预测模型。
+2.5 请可能要让预实验和正式实验共享一个代码框架，包含请求机、抽象类、路由机（预实验只有一个推理实例所以路由就是直接选择）、vllm实例等，以及可以替换的、方便网格试验的设置。
+还要包括日志、记录信息、数据格式等。
+3. 实验变量：网格测试矩阵 (Grid Search Matrix)
+你将通过排列组合以下变量进行自动化测试：
+路由策略 (Routing Strategy)：
+Baseline 1: 轮询。
+Baseline 2：最低负载。
+Model 1: 静态线性回归。
+Model 2: 决策树 (CART)。
+Model 3: MLP。
+Model 4: 全局更新权重的线性模型。
+流量分布 (Traffic Patterns)：
+Constant: 恒定速率。
+Poisson: 平滑随机到达。
+Burst: 模拟突发脉冲（Flash Crowd）。
+请求强度 (Workload Intensity)：
+Low/Medium/High: 改变整体 RPS (Requests Per Second)，观察系统从从容到过载的过程。
+4. QoS 评估指标 (Evaluation Metrics)
+这是你 Pre 中展示结果的核心数据：
+TTFT (Time to First Token)：衡量响应的首字延迟（用户感知的即时性）。
+TBT (Time Between Tokens)：衡量生成的流畅度，等同于 TPOT。
+Goodput (有效吞吐量)：
+5. 实验流程 (Execution Workflow)
+Step 1: Offline Training：利用预实验数据训练 MLP、决策树等模型，并将模型权重加载到 Router 中。
+Step 2: Execution：运行网格测试脚本，自动化切换不同的流量模式和路由算法。
+Step 3: Metrics Collection：Router 记录每一个请求的 Predicted_Metric 和由后端返回的 Actual_Metric。
+Step 4: Statistical Analysis：看情况分析。

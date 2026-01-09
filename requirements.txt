@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+aiohttp
+requests
+numpy
+pandas
+scikit-learn
+torch
+transformers
+datasets
+matplotlib
+seaborn
+pyyaml
+openai
+
+
