@@ -5,7 +5,7 @@
 # Update dependencies if needed (Qwen3 requires vllm>=0.8.5)
 # pip install --upgrade vllm transformers
 
-MODEL_PATH="./models/Qwen/Qwen3-8B"
+MODEL_PATH="/root/autodl-tmp/models/Qwen/Qwen3-8B"
 
 # Check if model exists
 if [ ! -d "$MODEL_PATH" ]; then

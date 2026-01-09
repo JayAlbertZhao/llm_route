@@ -2,7 +2,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 import os
 
-MODEL_PATH = "./models/Qwen/Qwen3-8B"
+MODEL_PATH = "/root/autodl-tmp/models/Qwen/Qwen3-8B"
 
 def check_model():
     print(f"Checking model integrity at {MODEL_PATH}...")
