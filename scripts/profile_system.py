@@ -18,11 +18,11 @@ class Profiler:
     def __init__(self, workload_path, target_url):
         self.loader = WorkloadLoader(workload_path)
         self.loader.load()
-        # Flatten buckets into a single list for random sampling
         self.all_data = self.loader.data
         self.results = []
         self.target_url = target_url
-        
+        self.tokenizer = None # Load lazily
+
     async def send_request(self, session, prompt, current_rps, active_reqs):
         payload = {
             "model": MODEL_NAME,
@@ -33,7 +33,8 @@ class Profiler:
         
         start_time = time.time()
         ttft = None
-        token_count = 0
+        completion_text = []
+        token_count = 0 # Count chunks, not real tokens yet
         
         try:
             # Use self.target_url instead of global constant
@@ -52,17 +53,24 @@ class Profiler:
                             chunk = json.loads(data)
                             if ttft is None:
                                 ttft = time.time() - start_time
+                            
+                            # Collect text for post-processing
+                            delta = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                            if delta:
+                                completion_text.append(delta)
                             token_count += 1
                         except:
                             pass
                             
             duration = time.time() - start_time
+            # Raw TBT estimate (will refine later)
             tbt = (duration - ttft) / (token_count - 1) if token_count > 1 and ttft else 0
             
             return {
-                "input_len": len(prompt) // 4, # Approx token len
-                "system_load": current_rps,    # We use RPS as a proxy for load intensity in this simplified profile
-                "active_reqs": active_reqs,    # Concurrency
+                "prompt_text": prompt,             # Store raw text
+                "completion_text": "".join(completion_text), # Store raw text
+                "system_load": current_rps,
+                "active_reqs": active_reqs,
                 "ttft": ttft,
                 "tbt": tbt,
                 "total_time": duration
@@ -70,6 +78,40 @@ class Profiler:
         except Exception as e:
             # print(f"Error: {e}")
             return None
+
+    def post_process_tokens(self):
+        print("Post-processing: Calculating exact token counts...")
+        from transformers import AutoTokenizer
+        # Use a small fast tokenizer for calculation (e.g. gpt2 or qwen)
+        # Ideally match the server model, but any standard tokenizer is fine for estimating load
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained("gpt2") 
+        except:
+            print("Warning: Could not load gpt2 tokenizer. Using simple length heuristic.")
+            self.tokenizer = None
+
+        processed_results = []
+        for res in self.results:
+            if self.tokenizer:
+                input_len = len(self.tokenizer.encode(res["prompt_text"]))
+                output_len = len(self.tokenizer.encode(res["completion_text"]))
+            else:
+                input_len = len(res["prompt_text"]) // 4
+                output_len = len(res["completion_text"]) // 4
+            
+            # Refine TBT with exact output length
+            if output_len > 1 and res["ttft"]:
+                res["tbt"] = (res["total_time"] - res["ttft"]) / (output_len - 1)
+            
+            res["input_len"] = input_len
+            res["output_len"] = output_len
+            
+            # Remove heavy text fields before saving
+            del res["prompt_text"]
+            del res["completion_text"]
+            processed_results.append(res)
+            
+        self.results = processed_results
 
     async def run_phase(self, rps, duration_sec=30):
         print(f"Profiling RPS={rps} for {duration_sec}s...")
@@ -112,6 +154,16 @@ class Profiler:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def run(self):
+        # Suppress SSL errors
+        def handle_exception(loop, context):
+            msg = context.get("exception", context.get("message"))
+            if "SSL" in str(msg) or "ClientConnectionError" in str(msg) or "application data after close notify" in str(msg):
+                return
+            loop.default_exception_handler(context)
+
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(handle_exception)
+
         # Sweep RPS from low to high
         # Adjust range based on your GPU capacity. For 8B model, single card might handle 5-20 RPS depending on prompt len.
         rps_levels = [0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 15.0]
@@ -122,6 +174,9 @@ class Profiler:
             print("Cooldown 5s...")
             await asyncio.sleep(5)
             
+        # Post-process
+        self.post_process_tokens()
+        
         # Save
         df = pd.DataFrame(self.results)
         df.to_csv(OUTPUT_FILE, index=False)
