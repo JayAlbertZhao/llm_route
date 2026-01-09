@@ -2,6 +2,10 @@
 # Start a single vLLM instance in foreground
 # Usage: bash scripts/run_vllm_node.sh --id <0-3>
 
+# Fix for "ImportError: libcudart.so.12: cannot open shared object file"
+# Add torch lib path to LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python -c 'import torch; import os; print(os.path.join(os.path.dirname(torch.__file__), "lib"))')
+
 # Default args
 NODE_ID=0
 
