@@ -128,8 +128,19 @@ class TrafficGenerator:
 
 if __name__ == "__main__":
     import argparse
+    # Load config if available
+    default_url = "http://localhost:6006"
+    try:
+        import yaml
+        with open("config/secrets.yaml", "r") as f:
+            conf = yaml.safe_load(f)
+            if "public_url" in conf:
+                default_url = conf["public_url"]
+    except:
+        pass
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--url", type=str, default="http://localhost:6006")
+    parser.add_argument("--url", type=str, default=default_url)
     parser.add_argument("--rps", type=float, default=2.0)
     parser.add_argument("--duration", type=int, default=10)
     parser.add_argument("--dist", type=str, default="poisson")

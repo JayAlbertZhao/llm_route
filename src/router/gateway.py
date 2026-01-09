@@ -13,16 +13,22 @@ logger = logging.getLogger("Router")
 
 app = FastAPI(title="vLLM Router")
 
-# Global Configuration (TODO: Move to config file)
-# AutoDL/SeetaCloud Deployment:
-# Router listens on 6006 (mapped to public 8443)
-# vLLM instances on 8081-8084
+# Load Configuration
 BACKENDS = [
     "http://localhost:8081",
     "http://localhost:8082",
     "http://localhost:8083",
     "http://localhost:8084"
 ]
+try:
+    import yaml
+    with open("config/secrets.yaml", "r") as f:
+        conf = yaml.safe_load(f)
+        if "backends" in conf:
+            BACKENDS = conf["backends"]
+except Exception:
+    pass # Use defaults
+
 STRATEGY = RoundRobinStrategy()
 CLIENT = VLLMClient()
 
