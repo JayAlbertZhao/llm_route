@@ -19,7 +19,7 @@ class Profiler:
         self.loader = WorkloadLoader(workload_path)
         self.loader.load()
         # Flatten buckets into a single list for random sampling
-        self.all_data = [item for bucket in self.loader.data_buckets.values() for item in bucket]
+        self.all_data = self.loader.data
         self.results = []
         self.target_url = target_url
         
