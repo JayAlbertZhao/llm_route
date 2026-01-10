@@ -165,8 +165,9 @@ class Profiler:
         loop.set_exception_handler(handle_exception)
 
         # Sweep RPS from low to high
-        # Adjust range based on your GPU capacity. For 8B model, single card might handle 5-20 RPS depending on prompt len.
-        rps_levels = [0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 15.0]
+        # Push to higher load to observe saturation/queueing effects
+        # For 8B model, we want to see TTFT spikes.
+        rps_levels = [1.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0]
         
         for rps in rps_levels:
             await self.run_phase(rps)
