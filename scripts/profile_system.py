@@ -27,7 +27,8 @@ class Profiler:
         payload = {
             "model": MODEL_NAME,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 128, 
+            # Remove max_tokens limit or set very high to stress TPOT
+            "max_tokens": 1024, 
             "stream": True
         }
         
@@ -165,9 +166,8 @@ class Profiler:
         loop.set_exception_handler(handle_exception)
 
         # Sweep RPS from low to high
-        # Push to higher load to observe saturation/queueing effects
-        # For 8B model, we want to see TTFT spikes.
-        rps_levels = [1.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0]
+        # Start from meaningful load, push to extreme
+        rps_levels = [16, 32, 64, 128, 256, 512, 1024]
         
         for rps in rps_levels:
             await self.run_phase(rps)
