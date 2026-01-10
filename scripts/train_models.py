@@ -22,10 +22,27 @@ def train_models():
 
     df = pd.read_csv(DATA_PATH)
     
-    # Feature Engineering
-    # X: [input_len, active_reqs]
-    # y: [ttft]
-    X = df[["input_len", "active_reqs"]]
+    # --- Advanced Feature Engineering ---
+    print("Generating advanced features...")
+    # 1. Interaction Features
+    df["len_x_reqs"] = df["input_len"] * df["active_reqs"]
+    df["len_sq"] = df["input_len"] ** 2
+    
+    # 2. Rolling/Lag Features (Simulating system state awareness)
+    # We assume data is time-ordered roughly.
+    # Rolling mean of LAST 5 completed requests' TTFT (Target Encoding Leakage? No, we use *past* data to predict *future*)
+    # In practice, Router knows the TTFT of requests that just finished.
+    df["last_5_avg_ttft"] = df["ttft"].rolling(window=5, min_periods=1).mean().shift(1).fillna(0)
+    df["last_5_avg_tbt"] = df["tbt"].rolling(window=5, min_periods=1).mean().shift(1).fillna(0)
+    
+    # Drop rows with NaNs from shifting
+    df = df.dropna()
+
+    # Features to use
+    features = ["input_len", "active_reqs", "len_x_reqs", "len_sq", "last_5_avg_ttft", "last_5_avg_tbt"]
+    print(f"Features used: {features}")
+    
+    X = df[features]
     y = df["ttft"]
 
     # Split
@@ -50,17 +67,24 @@ def train_models():
     evaluate_model(dt, X_test, y_test, "DecisionTree", results)
     joblib.dump(dt, os.path.join(MODEL_DIR, "dt_predictor.pkl"))
 
-    # 3. MLP
-    print("\nTraining MLP (Neural Network)...")
-    # Scaling is important for MLP
+    # 3. MLP (Deep Learning)
+    print("\nTraining MLP (Deep Learning)...")
     from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
-    # Save scaler for inference
     joblib.dump(scaler, os.path.join(MODEL_DIR, "mlp_scaler.pkl"))
 
-    mlp = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=500, random_state=42)
+    # Deeper and wider network
+    mlp = MLPRegressor(
+        hidden_layer_sizes=(128, 64, 32), 
+        activation='relu',
+        solver='adam',
+        max_iter=1000, 
+        learning_rate_init=0.001,
+        early_stopping=True,
+        random_state=42
+    )
     mlp.fit(X_train_scaled, y_train)
     
     # Eval MLP separately because of scaling
