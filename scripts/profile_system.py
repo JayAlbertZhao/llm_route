@@ -244,9 +244,10 @@ class Profiler:
         # Start metrics collector
         collector_task = asyncio.create_task(self.metrics_collector.start())
 
-        # Sweep RPS from low to high
-        # Start from meaningful load, push to extreme
-        rps_levels = [16, 32, 64, 128]
+        # Sweep RPS to target Zone 2 (Medium Load) specifically
+        # Previous coarse sweep: [16, 32, 64, 128]
+        # New fine-grained sweep to capture the knee point
+        rps_levels = [40, 50, 60, 70, 80, 90, 100, 110]
         
         for rps in rps_levels:
             await self.run_phase(rps)
