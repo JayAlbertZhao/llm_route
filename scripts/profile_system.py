@@ -9,15 +9,15 @@ import random
 from src.client.workload import WorkloadLoader
 
 # Profiling Config
-    # Default URL (can be overridden by args)
-    # Target URL for inference requests
-    TARGET_URL = "http://localhost:8081/v1/chat/completions"
-    # Metrics URL for scraping system state
-    METRICS_URL = "http://localhost:8081/metrics"
-    OUTPUT_FILE = "data/profiling_data.csv"
-    MODEL_NAME = "qwen-8b"
+# Default URL (can be overridden by args)
+# Target URL for inference requests
+TARGET_URL = "http://localhost:8081/v1/chat/completions"
+# Metrics URL for scraping system state
+METRICS_URL = "http://localhost:8081/metrics"
+OUTPUT_FILE = "data/profiling_data.csv"
+MODEL_NAME = "qwen-8b"
 
-    class MetricsCollector:
+class MetricsCollector:
         def __init__(self, metrics_url, interval=0.1):
             self.url = metrics_url
             self.interval = interval
