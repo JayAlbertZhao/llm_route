@@ -34,6 +34,8 @@ def start_router(strategy):
     
     # Start process
     # Use unbuffered stdout/stderr to capture output immediately
+    # Fix: Set PYTHONPATH to current directory so 'src' can be imported
+    env["PYTHONPATH"] = os.getcwd()
     cmd = [sys.executable, "-u", "src/router/gateway.py", "--host", ROUTER_HOST, "--port", str(ROUTER_PORT)]
     
     # Pipe stderr to stdout so we can capture everything
