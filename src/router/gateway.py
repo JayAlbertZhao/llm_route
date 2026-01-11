@@ -34,8 +34,13 @@ except Exception:
     pass 
 
 # Switch to Hierarchical Strategy
-# STRATEGY = RoundRobinStrategy()
-STRATEGY = HierarchicalStrategy()
+strategy_name = os.environ.get("ROUTER_STRATEGY", "hierarchical").lower()
+if strategy_name == "rr" or strategy_name == "round_robin":
+    STRATEGY = RoundRobinStrategy()
+else:
+    STRATEGY = HierarchicalStrategy()
+    
+logger.info(f"Initialized Strategy: {type(STRATEGY).__name__}")
 CLIENT = VLLMClient()
 
 # System State (Grey-box)
