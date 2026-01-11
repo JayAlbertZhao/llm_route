@@ -244,10 +244,10 @@ class Profiler:
         # Start metrics collector
         collector_task = asyncio.create_task(self.metrics_collector.start())
 
-        # Sweep RPS to target Zone 2 (Medium Load) specifically
-        # Previous coarse sweep: [16, 32, 64, 128]
-        # New fine-grained sweep to capture the knee point
-        rps_levels = [40, 50, 60, 70, 80, 90, 100, 110]
+        # Sweep RPS to fill the gap between Low and High Load (The "Bridge")
+        # Previous data was heavy on Extreme Load.
+        # This run focuses on the Phase Transition zone.
+        rps_levels = [32, 40, 48, 56, 64, 72, 80]
         
         for rps in rps_levels:
             await self.run_phase(rps)
@@ -264,10 +264,13 @@ class Profiler:
         # Post-process
         self.post_process_tokens()
         
-        # Save
+        # Save (Incremental - Append Mode)
+        import os
+        header = not os.path.exists(OUTPUT_FILE)
         df = pd.DataFrame(self.results)
-        df.to_csv(OUTPUT_FILE, index=False)
-        print(f"Saved {len(df)} samples to {OUTPUT_FILE}")
+        # Use mode='a' to append, header=False if file exists
+        df.to_csv(OUTPUT_FILE, mode='a', header=header, index=False)
+        print(f"Appended {len(df)} samples to {OUTPUT_FILE}")
 
 if __name__ == "__main__":
     import argparse
