@@ -18,79 +18,78 @@ OUTPUT_FILE = "data/profiling_data.csv"
 MODEL_NAME = "qwen-8b"
 
 class MetricsCollector:
-        def __init__(self, metrics_url, interval=0.1):
-            self.url = metrics_url
-            self.interval = interval
-            self.running = False
-            self.logs = [] # List of (timestamp, running, waiting)
-            self._lock = asyncio.Lock()
+    def __init__(self, metrics_url, interval=0.1):
+        self.url = metrics_url
+        self.interval = interval
+        self.running = False
+        self.logs = [] # List of (timestamp, running, waiting)
+        self._lock = asyncio.Lock()
 
-        async def start(self):
-            self.running = True
-            while self.running:
+    async def start(self):
+        self.running = True
+        while self.running:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(self.url) as response:
+                        if response.status == 200:
+                            text = await response.text()
+                            self._parse_and_store(text)
+            except Exception:
+                pass
+            await asyncio.sleep(self.interval)
+
+    def stop(self):
+        self.running = False
+
+    def _parse_and_store(self, text):
+        # Simple parsing for speed
+        # vllm:num_requests_running{...} 0.0
+        num_running = 0
+        num_waiting = 0
+        
+        for line in text.splitlines():
+            if line.startswith("vllm:num_requests_running"):
                 try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(self.url) as response:
-                            if response.status == 200:
-                                text = await response.text()
-                                self._parse_and_store(text)
-                except Exception:
-                    pass
-                await asyncio.sleep(self.interval)
+                    num_running = float(line.split()[-1])
+                except: pass
+            elif line.startswith("vllm:num_requests_waiting"):
+                try:
+                    num_waiting = float(line.split()[-1])
+                except: pass
+        
+        # Store with high precision timestamp
+        self.logs.append({
+            "ts": time.time(),
+            "running": num_running,
+            "waiting": num_waiting
+        })
 
-        def stop(self):
-            self.running = False
-
-        def _parse_and_store(self, text):
-            # Simple parsing for speed
-            # vllm:num_requests_running{...} 0.0
-            num_running = 0
-            num_waiting = 0
+    def get_state_at(self, timestamp):
+        # Find the log entry closest to the given timestamp (before or slightly after)
+        # Since logs are sorted by time, we can use binary search or simple iteration if list is small
+        # For simplicity in this script, we'll just search backwards
+        if not self.logs:
+            return 0, 0
             
-            for line in text.splitlines():
-                if line.startswith("vllm:num_requests_running"):
-                    try:
-                        num_running = float(line.split()[-1])
-                    except: pass
-                elif line.startswith("vllm:num_requests_waiting"):
-                    try:
-                        num_waiting = float(line.split()[-1])
-                    except: pass
-            
-            # Store with high precision timestamp
-            self.logs.append({
-                "ts": time.time(),
-                "running": num_running,
-                "waiting": num_waiting
-            })
+        # Iterate backwards to find the state just before the request started
+        for entry in reversed(self.logs):
+            if entry["ts"] <= timestamp:
+                return entry["running"], entry["waiting"]
+        
+        # Fallback to earliest
+        return self.logs[0]["running"], self.logs[0]["waiting"]
 
-        def get_state_at(self, timestamp):
-            # Find the log entry closest to the given timestamp (before or slightly after)
-            # Since logs are sorted by time, we can use binary search or simple iteration if list is small
-            # For simplicity in this script, we'll just search backwards
-            if not self.logs:
-                return 0, 0
-                
-            # Iterate backwards to find the state just before the request started
-            for entry in reversed(self.logs):
-                if entry["ts"] <= timestamp:
-                    return entry["running"], entry["waiting"]
-            
-            # Fallback to earliest
-            return self.logs[0]["running"], self.logs[0]["waiting"]
+class Profiler:
+    def __init__(self, workload_path, target_url, metrics_url):
+        self.loader = WorkloadLoader(workload_path)
+        self.loader.load()
+        self.all_data = self.loader.data
+        self.results = []
+        self.target_url = target_url
+        self.metrics_collector = MetricsCollector(metrics_url)
+        self.tokenizer = None # Load lazily
 
-    class Profiler:
-        def __init__(self, workload_path, target_url, metrics_url):
-            self.loader = WorkloadLoader(workload_path)
-            self.loader.load()
-            self.all_data = self.loader.data
-            self.results = []
-            self.target_url = target_url
-            self.metrics_collector = MetricsCollector(metrics_url)
-            self.tokenizer = None # Load lazily
-
-        async def send_request(self, session, prompt, current_rps, active_reqs_client):
-            # ... existing send_request code ...
+    async def send_request(self, session, prompt, current_rps, active_reqs_client):
         payload = {
             "model": MODEL_NAME,
             "messages": [{"role": "user", "content": prompt}],
@@ -291,4 +290,3 @@ if __name__ == "__main__":
 
     profiler = Profiler(args.workload, args.url, args.metrics_url)
     asyncio.run(profiler.run())
-
