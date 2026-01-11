@@ -27,8 +27,13 @@ def train_models():
     # 1. Interaction Features
     df["len_x_reqs"] = df["input_len"] * df["active_reqs"]
     df["len_sq"] = df["input_len"] ** 2
+
+    # 2. Queueing Theory Features (New)
+    # Models queueing delay which grows super-linearly with load
+    df["reqs_sq"] = df["active_reqs"] ** 2
+    df["len_x_reqs_sq"] = df["input_len"] * (df["active_reqs"] ** 2)
     
-    # 2. Rolling/Lag Features (Simulating system state awareness)
+    # 3. Rolling/Lag Features (Simulating system state awareness)
     # We assume data is time-ordered roughly.
     # Rolling mean of LAST 5 completed requests' TTFT (Target Encoding Leakage? No, we use *past* data to predict *future*)
     # In practice, Router knows the TTFT of requests that just finished.
@@ -39,7 +44,7 @@ def train_models():
     df = df.dropna()
 
     # Features to use
-    features = ["input_len", "active_reqs", "len_x_reqs", "len_sq", "last_5_avg_ttft", "last_5_avg_tbt"]
+    features = ["input_len", "active_reqs", "len_x_reqs", "len_sq", "reqs_sq", "len_x_reqs_sq", "last_5_avg_ttft", "last_5_avg_tbt"]
     print(f"Features used: {features}")
     
     X = df[features]
@@ -113,6 +118,10 @@ def evaluate_model(model, X_test, y_test, name, results):
     r2 = r2_score(y_test, y_pred)
     results[name] = {"MAE": mae, "MSE": mse, "R2": r2}
     print(f"{name} - MAE: {mae:.4f}, MSE: {mse:.4f}, R2: {r2:.4f}")
+
+    # Additional: Check R2 on high load subset of test data (if possible)
+    # We need to reconstruct the dataframe or pass it in to do this properly, 
+    # but for now let's just inspect the overall improvement.
 
 if __name__ == "__main__":
     train_models()
