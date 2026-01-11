@@ -117,6 +117,18 @@ def main():
     # Ensure no old router is running
     os.system(f"fuser -k {ROUTER_PORT}/tcp > /dev/null 2>&1")
     
+    # Check if we should append to existing file or overwrite
+    # But since header is different from old file, let's overwrite or backup
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            # Check if it has the new columns
+            df_check = pd.read_csv(OUTPUT_FILE)
+            if "strategy" not in df_check.columns:
+                print(f"[Manager] Backing up old {OUTPUT_FILE}")
+                os.rename(OUTPUT_FILE, OUTPUT_FILE + ".bak")
+        except:
+            pass
+
     total_runs = len(STRATEGIES) * len(SCENARIOS) * len(ARRIVALS) * len(RPS_LEVELS)
     curr_run = 0
     
