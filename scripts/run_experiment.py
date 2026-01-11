@@ -7,11 +7,29 @@ import random
 import numpy as np
 import pandas as pd
 import os
+import csv
 from src.client.workload import WorkloadLoader
 
 # Configuration
 OUTPUT_DIR = "logs/experiments"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+class RealTimeCSVWriter:
+    def __init__(self, filepath, fieldnames):
+        self.filepath = filepath
+        self.fieldnames = fieldnames
+        self.file = open(filepath, "w", newline="", buffering=1) # Line buffering
+        self.writer = csv.DictWriter(self.file, fieldnames=fieldnames)
+        self.writer.writeheader()
+
+    def write(self, row):
+        try:
+            self.writer.writerow(row)
+        except Exception as e:
+            print(f"Error writing to CSV: {e}")
+
+    def close(self):
+        self.file.close()
 
 class ExperimentRunner:
     def __init__(self, router_url, workload_path, rps, duration, scenario="random", arrival="poisson"):
@@ -32,6 +50,12 @@ class ExperimentRunner:
         }
         self._bucket_data()
         
+        # Setup CSV Writer
+        self.filename = f"exp_{self.arrival}_{self.scenario}_rps{self.rps}_{int(time.time())}.csv"
+        self.filepath = os.path.join(OUTPUT_DIR, self.filename)
+        self.fieldnames = ["req_id", "start_ts", "ttft", "duration", "prompt_len", "error", "rps", "scenario", "arrival"]
+        self.writer = RealTimeCSVWriter(self.filepath, self.fieldnames)
+        
     def _bucket_data(self):
         for item in self.loader.data:
             length = item.get("token_len", 0)
@@ -41,53 +65,35 @@ class ExperimentRunner:
             else: self.buckets["extra_long"].append(item)
 
     def get_next_prompt(self, request_idx):
-        """Custom Sampling Logic based on Scenario (Length Distribution)."""
         if self.scenario == "random":
             return random.choice(self.loader.data)["prompt"]
-            
         elif self.scenario == "rr_worst_case":
-            # 3 Short, 1 Long
             if request_idx % 4 == 0:
                 return random.choice(self.buckets["long"] + self.buckets["extra_long"])["prompt"]
             else:
                 return random.choice(self.buckets["short"])["prompt"]
-                
         elif self.scenario == "long_heavy":
-            if random.random() < 0.7: # 70% Long
+            if random.random() < 0.7: 
                 return random.choice(self.buckets["long"] + self.buckets["extra_long"])["prompt"]
             else:
                 return random.choice(self.buckets["medium"])["prompt"]
-                
         elif self.scenario == "short_only":
             return random.choice(self.buckets["short"])["prompt"]
-            
         elif self.scenario == "bimodal":
-            # 50% Short, 50% Extra Long
             if random.random() < 0.5:
                 return random.choice(self.buckets["short"])["prompt"]
             else:
                 return random.choice(self.buckets["extra_long"])["prompt"]
-                
         return random.choice(self.loader.data)["prompt"]
 
     def get_inter_arrival_time(self):
-        """Calculate wait time based on Arrival Pattern."""
         target_interval = 1.0 / self.rps
-        
         if self.arrival == "poisson":
             return np.random.exponential(target_interval)
-            
         elif self.arrival == "constant":
             return target_interval
-            
         elif self.arrival == "burst":
-            # Gamma distribution to simulate bursty traffic
-            # High variance
-            # shape k=0.5, scale=theta -> mean = k*theta
-            # we want mean = target_interval
-            # so theta = target_interval / k = target_interval / 0.5 = 2 * target_interval
             return np.random.gamma(shape=0.5, scale=2.0 * target_interval)
-            
         return target_interval
 
     async def send_request(self, session, idx, prompt):
@@ -101,32 +107,40 @@ class ExperimentRunner:
         
         start_time = time.time()
         ttft = None
+        error = None
+        duration = 0
         
         try:
-            # Timeout 60s
-            async with session.post(self.router_url, json=payload, timeout=60) as response:
+            async with session.post(self.router_url, json=payload, timeout=90) as response: # Increased request timeout
                 if response.status != 200:
-                    return {"error": response.status, "ts": start_time}
-                
-                async for line in response.content:
-                    line = line.decode('utf-8').strip()
-                    if line.startswith("data: "):
-                        if ttft is None:
-                            ttft = time.time() - start_time
-                        if line == "data: [DONE]":
-                            break
+                    error = f"HTTP {response.status}"
+                else:
+                    async for line in response.content:
+                        line = line.decode('utf-8').strip()
+                        if line.startswith("data: "):
+                            if ttft is None:
+                                ttft = time.time() - start_time
+                            if line == "data: [DONE]":
+                                break
         except Exception as e:
-            # logger.error(f"Req failed: {e}")
-            return {"error": str(e), "ts": start_time}
+            error = str(e)
             
         duration = time.time() - start_time
-        return {
+        
+        # Real-time Write
+        row = {
             "req_id": idx,
             "start_ts": start_time,
             "ttft": ttft,
             "duration": duration,
-            "prompt_len": len(prompt) // 4
+            "prompt_len": len(prompt) // 4,
+            "error": error,
+            "rps": self.rps,
+            "scenario": self.scenario,
+            "arrival": self.arrival
         }
+        self.writer.write(row)
+        return row
 
     async def run(self):
         print(f"Starting Experiment: RPS={self.rps}, Arrival={self.arrival}, Scenario={self.scenario}")
@@ -146,7 +160,6 @@ class ExperimentRunner:
                 tasks.append(task)
                 req_idx += 1
                 
-                # Periodic cleanup
                 if req_idx % 100 == 0:
                      tasks = [t for t in tasks if not t.done()]
             
@@ -154,39 +167,35 @@ class ExperimentRunner:
             print(f"Waiting for {len([t for t in tasks if not t.done()])} pending requests...")
             if tasks:
                 try:
-                    done_results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=30)
+                    # Timeout set to 20s to drain pending
+                    done_results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=20)
                     for res in done_results:
                         if isinstance(res, dict): results.append(res)
                 except asyncio.TimeoutError:
-                    print("Timeout waiting for pending requests.")
-                    
-        # Analyze
-        df = pd.DataFrame(results)
+                    print("Timeout waiting for pending requests. Cancelling...")
+                    for t in tasks: t.cancel()
         
-        # Count errors
-        errors = df[df.get("error").notna()] if "error" in df.columns else pd.DataFrame()
-        success = df[df.get("ttft").notna()] if "ttft" in df.columns else pd.DataFrame()
-        
-        print("\n--- Results ---")
-        print(f"Total Sent: {req_idx}")
-        print(f"Success: {len(success)}")
-        print(f"Errors: {len(errors)}")
-        
-        if len(success) > 0:
-            print(f"Mean TTFT: {success['ttft'].mean():.4f}s")
-            print(f"P95 TTFT: {success['ttft'].quantile(0.95):.4f}s")
-            print(f"P99 TTFT: {success['ttft'].quantile(0.99):.4f}s")
+        self.writer.close()
+        print(f"Saved details to {self.filepath}")
+
+        # Post-analysis for Summary
+        # We read back the file to ensure we analyze exactly what was saved
+        try:
+            df = pd.read_csv(self.filepath)
+            success = df[df["ttft"].notna()]
+            errors = df[df["error"].notna()]
             
-            filename = f"exp_{self.arrival}_{self.scenario}_rps{self.rps}_{int(time.time())}.csv"
-            path = os.path.join(OUTPUT_DIR, filename)
-            # Add metadata columns
-            success["rps"] = self.rps
-            success["scenario"] = self.scenario
-            success["arrival"] = self.arrival
-            success.to_csv(path, index=False)
-            print(f"Saved details to {path}")
+            print("\n--- Results ---")
+            print(f"Total Sent: {len(df)}")
+            print(f"Success: {len(success)}")
+            print(f"Errors: {len(errors)}")
             
-        return df
+            if len(success) > 0:
+                print(f"Mean TTFT: {success['ttft'].mean():.4f}s")
+                print(f"P95 TTFT: {success['ttft'].quantile(0.95):.4f}s")
+                print(f"P99 TTFT: {success['ttft'].quantile(0.99):.4f}s")
+        except Exception as e:
+            print(f"Analysis failed: {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
