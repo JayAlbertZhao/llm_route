@@ -33,8 +33,13 @@ def start_router(strategy):
     env["ROUTER_STRATEGY"] = strategy
     
     # Start process
-    cmd = [sys.executable, "src/router/gateway.py", "--host", ROUTER_HOST, "--port", str(ROUTER_PORT)]
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Use unbuffered stdout/stderr to capture output immediately
+    cmd = [sys.executable, "-u", "src/router/gateway.py", "--host", ROUTER_HOST, "--port", str(ROUTER_PORT)]
+    
+    # Pipe stderr to stdout so we can capture everything
+    # But for debugging, let's redirect to a log file instead of /dev/null
+    log_file = open(f"logs/router_{strategy}.log", "w")
+    proc = subprocess.Popen(cmd, env=env, stdout=log_file, stderr=subprocess.STDOUT)
     
     # Wait for health check
     for i in range(20):
@@ -42,9 +47,26 @@ def start_router(strategy):
             print("[Manager] Router is UP.")
             return proc
         time.sleep(1)
+        # Check if process died
+        if proc.poll() is not None:
+            print(f"[Manager] Router process died early with code {proc.returncode}")
+            break
     
-    print("[Manager] Router failed to start!")
-    proc.kill()
+    print("[Manager] Router failed to start! Check logs/router_*.log")
+    # Clean up file handle
+    log_file.close()
+    
+    # Print the last few lines of the log for immediate feedback
+    try:
+        with open(f"logs/router_{strategy}.log", "r") as f:
+            print("--- Router Log Tail ---")
+            print("".join(f.readlines()[-10:]))
+            print("-----------------------")
+    except:
+        pass
+
+    if proc.poll() is None:
+        proc.kill()
     return None
 
 def run_experiment(strategy, scenario, arrival, rps):
