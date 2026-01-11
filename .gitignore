@@ -1,49 +1,12 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Env
-venv/
-env/
-ENV/
-.env
-.venv
-
-# IDE
-.idea/
+*.pyc
+.ipynb_checkpoints/
 .vscode/
-*.swp
-*.swo
-
-# Project specific
+.idea/
+*.log
 data/
 logs/
-models/
-*.log
-*.csv
-*.jsonl
 config/secrets.yaml
-
-# Mac
-.DS_Store
-
+models/*.pkl
+models/*.pth
+Experiment_Report.md

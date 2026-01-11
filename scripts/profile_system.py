@@ -244,10 +244,10 @@ class Profiler:
         # Start metrics collector
         collector_task = asyncio.create_task(self.metrics_collector.start())
 
-        # Sweep RPS to fill the gap between Low and High Load (The "Bridge")
-        # Previous data was heavy on Extreme Load.
-        # This run focuses on the Phase Transition zone.
-        rps_levels = [32, 40, 48, 56, 64, 72, 80]
+        # Sweep RPS to fill the Low Load Gap
+        # Previous data captured Medium (Transition) and High Load.
+        # Now we target the "Quiet" zone to complete the manifold.
+        rps_levels = [4, 8, 12, 16, 20, 24, 28]
         
         for rps in rps_levels:
             await self.run_phase(rps)
