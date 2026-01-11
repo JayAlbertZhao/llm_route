@@ -75,6 +75,10 @@ def run_experiment(strategy, scenario, arrival, rps):
     print(f"\n>>> Running: Strat={strategy}, Scen={scenario}, Arr={arrival}, RPS={rps}")
     
     # Run the experiment script (it saves detailed CSVs to logs/experiments/)
+    # Fix: Inherit PYTHONPATH here too
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.getcwd()
+    
     cmd = [
         sys.executable, "scripts/run_experiment.py",
         "--rps", str(rps),
@@ -86,7 +90,7 @@ def run_experiment(strategy, scenario, arrival, rps):
     
     try:
         # Capture output to find the saved filename
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=DURATION + 30)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=DURATION + 30, env=env)
         output = result.stdout
         print(output)
         
